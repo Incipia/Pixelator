@@ -113,6 +113,13 @@ class ViewController: UIViewController
       _animating = false
    }
    
+   private func _activateDisplayLink()
+   {
+      _animating = true
+      _displayLink = CADisplayLink(target: self, selector: "updateDisplay")
+      _displayLink?.addToRunLoop(NSRunLoop.mainRunLoop(), forMode: NSDefaultRunLoopMode)
+   }
+   
    private func _advancePixelationAnimation()
    {
       if _pixellateFilter.fractionalWidthOfAPixel < _maxPixellateValue
@@ -164,9 +171,7 @@ class ViewController: UIViewController
    @IBAction private func _animateButtonPressed()
    {
       if _animating == false {
-         _animating = true
-         _displayLink = CADisplayLink(target: self, selector: "updateDisplay")
-         _displayLink?.addToRunLoop(NSRunLoop.mainRunLoop(), forMode: NSDefaultRunLoopMode)
+         _activateDisplayLink()
       }
    }
 }
