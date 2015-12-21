@@ -13,9 +13,16 @@ extension UIView
 {
    func boundInside(superView: UIView)
    {
-      self.translatesAutoresizingMaskIntoConstraints = false
-      superView.addConstraints(NSLayoutConstraint.constraintsWithVisualFormat("H:|-0-[subview]-0-|", options: NSLayoutFormatOptions.DirectionLeadingToTrailing, metrics:nil, views:["subview":self]))
-      superView.addConstraints(NSLayoutConstraint.constraintsWithVisualFormat("V:|-0-[subview]-0-|", options: NSLayoutFormatOptions.DirectionLeadingToTrailing, metrics:nil, views:["subview":self]))
+      translatesAutoresizingMaskIntoConstraints = false
+      for formattingString in ["H:|-0-[subview]-0-|", "V:|-0-[subview]-0-|"]
+      {
+         let constraints = NSLayoutConstraint.constraintsWithVisualFormat(
+            formattingString,
+            options: .DirectionLeadingToTrailing,
+            metrics: nil,
+            views: ["subview" : self])
+         superView.addConstraints(constraints)
+      }
    }
 }
 
@@ -28,19 +35,23 @@ class ViewController: UIViewController
       }
    }
    private lazy var _gpuImageView: GPUImageView = {
-      let gpuImageView = GPUImageView()
-      gpuImageView.fillMode = kGPUImageFillModePreserveAspectRatioAndFill
-      gpuImageView.translatesAutoresizingMaskIntoConstraints = false
-      return gpuImageView
+      let imageView = GPUImageView()
+      imageView.fillMode = kGPUImageFillModePreserveAspectRatioAndFill
+      return imageView
    }()
-   
    private lazy var _pixellateFilter: GPUImagePixellateFilter = {
-      let pixellateFilter = GPUImagePixellateFilter()
-      pixellateFilter.fractionalWidthOfAPixel = 0
-      return pixellateFilter
+      let filter = GPUImagePixellateFilter()
+      filter.fractionalWidthOfAPixel = 0
+      return filter
    }()
+   private var _gpuImagePicture: GPUImagePicture! {
+      didSet {
+         _gpuImagePicture.addTarget(_pixellateFilter)
+         _pixellateFilter.addTarget(_gpuImageView)
+         _gpuImagePicture.processImage()
+      }
+   }
    
-   private var _gpuImagePicture = GPUImagePicture(image: UIImage(named: "wind")!)
    private var _shouldPixellate = true
    private var _animating = false
    
@@ -74,15 +85,6 @@ class ViewController: UIViewController
       _gpuImagePicture.processImage()
    }
    
-   private func _setupGPUImagePictureWithImage(image: UIImage)
-   {
-      _gpuImagePicture = GPUImagePicture(image: image)
-      
-      _gpuImagePicture.addTarget(_pixellateFilter)
-      _pixellateFilter.addTarget(_gpuImageView)
-      _gpuImagePicture.processImage()
-   }
-   
    override func preferredStatusBarStyle() -> UIStatusBarStyle
    {
       switch _currentImageIndex
@@ -103,38 +105,61 @@ class ViewController: UIViewController
    
    private func _advanceToNextImage()
    {
+      // This is slightly misleading.. check out didSet for _gpuImagePicture
+      // to see what needs to happen for this to work
       let image = _images[_currentImageIndex]
+      _gpuImagePicture = GPUImagePicture(image: image)
+      
       _currentImageIndex = (_currentImageIndex + 1) % _images.count
-      _setupGPUImagePictureWithImage(image)
       setNeedsStatusBarAppearanceUpdate()
    }
    
+   private func _invalidateDisplayLink()
+   {
+      _displayLink?.invalidate()
+      _animating = false
+   }
+   
+   private func _advancePixelationAnimation()
+   {
+      if _pixellateFilter.fractionalWidthOfAPixel < _maxPixellateValue
+      {
+         let newValue = min(_pixellateFilter.fractionalWidthOfAPixel + _pixellateStepValue, _maxPixellateValue)
+         _pixellateFilter.fractionalWidthOfAPixel = newValue
+         _gpuImagePicture.processImage()
+         
+         if newValue == _maxPixellateValue {
+            _shouldPixellate = false
+            _invalidateDisplayLink()
+         }
+      }
+   }
+   
+   private func _advanceUnpixelationAnimation()
+   {
+      if _pixellateFilter.fractionalWidthOfAPixel > 0
+      {
+         let newValue = max(_pixellateFilter.fractionalWidthOfAPixel - _pixellateStepValue, 0)
+         _pixellateFilter.fractionalWidthOfAPixel = newValue
+         _gpuImagePicture.processImage()
+         
+         // This is sort of hacky.  The docs for the pixellateFilter say "Values below one pixel width in the source image
+         // are ignored", so if newValue is lower than some arbitrary threshold, we know the pixelation animation should be complete
+         if newValue <= 0.0004 {
+            _pixellateFilter.fractionalWidthOfAPixel = 0
+            _shouldPixellate = true
+            _invalidateDisplayLink()
+         }
+      }
+   }
+
    func updateDisplay()
    {
       if _shouldPixellate {
-         if _pixellateFilter.fractionalWidthOfAPixel < _maxPixellateValue {
-            let newValue = min(_pixellateFilter.fractionalWidthOfAPixel + _pixellateStepValue, _maxPixellateValue)
-            _pixellateFilter.fractionalWidthOfAPixel = newValue
-            _gpuImagePicture.processImage()
-            
-            if newValue == _maxPixellateValue {
-               _shouldPixellate = false
-               _displayLink?.invalidate()
-               _animating = false
-            }
-         }
+         _advancePixelationAnimation()
       }
       else {
-         if _pixellateFilter.fractionalWidthOfAPixel > 0 {
-            let newValue = max(_pixellateFilter.fractionalWidthOfAPixel - _pixellateStepValue, 0)
-            _pixellateFilter.fractionalWidthOfAPixel = newValue
-            _gpuImagePicture.processImage()
-            if newValue <= 0.0004 {
-               _shouldPixellate = true
-               _displayLink?.invalidate()
-               _animating = false
-            }
-         }
+         _advanceUnpixelationAnimation()
       }
    }
    
