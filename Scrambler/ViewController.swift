@@ -96,13 +96,6 @@ class ViewController: UIViewController
       }
    }
    
-   @IBAction private func _nextButtonPressed()
-   {
-      if _animating == false {
-         _advanceToNextImage()
-      }
-   }
-   
    private func _advanceToNextImage()
    {
       // This is slightly misleading.. check out didSet for _gpuImagePicture
@@ -161,6 +154,11 @@ class ViewController: UIViewController
       else {
          _advanceUnpixelationAnimation()
       }
+   }
+   
+   @IBAction private func _nextButtonPressed()
+   {
+      _advanceToNextImage()
    }
    
    @IBAction private func _animateButtonPressed()
